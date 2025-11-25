@@ -1,9 +1,19 @@
+-- Game verification
+local allowedPlaceId = 10165583746
+local allowedGameId = 3730079862
+
+if game.PlaceId ~= allowedPlaceId and game.GameId ~= allowedGameId then
+	warn("Script executed in wrong game. Self-destructing...")
+	return
+end
+
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 	local Players = game:GetService("Players")
 	local RunService = game:GetService("RunService")
 	local ChatService = game:GetService("TextChatService")
 	local TweenService = game:GetService("TweenService")
 	local Lighting = game:GetService("Lighting")
+	local UserInputService = game:GetService("UserInputService")
 	local player = game.Players.LocalPlayer
 	local playerGui = player:WaitForChild("PlayerGui")
 	local char = player.Character
@@ -27,7 +37,111 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 	local MainTab = Window:CreateTab("Main", "home")
 		MainTab:CreateSection("Change log")
-			MainTab:CreateParagraph({Title = "NOVEMBER 24", Content = "Added Box ESP · Added Skeleton ESP · Reorganized ESP UI"})
+			MainTab:CreateParagraph({Title = "NOVEMBER 25", Content = "Added AI Aimbot with smoothing and wall check · Fixed Skeleton ESP · Added game verification"})
+
+		MainTab:CreateSection("Aimbot")
+			local AimbotEnabled = false
+			local AimbotSmoothing = 0.1
+			local WallCheckEnabled = true
+			local AimbotConnection
+			
+			local function isVisible(targetPart)
+				if not WallCheckEnabled then return true end
+				
+				local camera = workspace.CurrentCamera
+				local origin = camera.CFrame.Position
+				local direction = (targetPart.Position - origin).Unit * (targetPart.Position - origin).Magnitude
+				
+				local ray = Ray.new(origin, direction)
+				local hitPart = workspace:FindPartOnRayWithIgnoreList(ray, {player.Character, workspace.Characters})
+				
+				return hitPart == targetPart or hitPart == nil
+			end
+			
+			local function getClosestNPC()
+				local closestNPC = nil
+				local shortestDistance = math.huge
+				local camera = workspace.CurrentCamera
+				local mousePos = UserInputService:GetMouseLocation()
+				
+				for _, character in pairs(workspace.Characters:GetChildren()) do
+					if character:FindFirstChild("Humanoid") and character:FindFirstChild("Head") then
+						local humanoid = character.Humanoid
+						if humanoid.Health > 0 and not Players:GetPlayerFromCharacter(character) then
+							local head = character.Head
+							local screenPos, onScreen = camera:WorldToViewportPoint(head.Position)
+							
+							if onScreen then
+								local distance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+								
+								if distance < shortestDistance and isVisible(head) then
+									shortestDistance = distance
+									closestNPC = character
+								end
+							end
+						end
+					end
+				end
+				
+				return closestNPC
+			end
+			
+			local function aimAt(target)
+				if not target or not target:FindFirstChild("Head") then return end
+				
+				local camera = workspace.CurrentCamera
+				local targetPos = target.Head.Position
+				local currentCFrame = camera.CFrame
+				local targetCFrame = CFrame.new(camera.CFrame.Position, targetPos)
+				
+				camera.CFrame = currentCFrame:Lerp(targetCFrame, AimbotSmoothing)
+			end
+			
+			local AimbotToggle = MainTab:CreateToggle({
+				Name = "AI Aimbot",
+				CurrentValue = false,
+				Flag = "AimbotToggle",
+				Callback = function(v)
+					AimbotEnabled = v
+					
+					if v then
+						AimbotConnection = RunService.RenderStepped:Connect(function()
+							if AimbotEnabled then
+								local target = getClosestNPC()
+								if target then
+									aimAt(target)
+								end
+							end
+						end)
+					else
+						if AimbotConnection then
+							AimbotConnection:Disconnect()
+							AimbotConnection = nil
+						end
+					end
+				end,
+			})
+			
+			local SmoothingSlider = MainTab:CreateSlider({
+				Name = "Aimbot Smoothing",
+				Range = {0.01, 1},
+				Increment = 0.01,
+				Suffix = "",
+				CurrentValue = 0.1,
+				Flag = "AimbotSmoothing",
+				Callback = function(v)
+					AimbotSmoothing = v
+				end,
+			})
+			
+			local WallCheckToggle = MainTab:CreateToggle({
+				Name = "Wall Check",
+				CurrentValue = true,
+				Flag = "WallCheckToggle",
+				Callback = function(v)
+					WallCheckEnabled = v
+				end,
+			})
 
 		MainTab:CreateSection("Hide & Seek")
 			local HunterModeEnabled = false
@@ -734,14 +848,19 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 					{"RightLowerLeg", "RightFoot"}
 				}
 				
+				local attachments = {}
+				local beams = {}
+				
 				local function createLine(part1, part2)
 					if not part1 or not part2 then return end
 					
 					local attachment0 = Instance.new("Attachment")
 					attachment0.Parent = part1
+					table.insert(attachments, attachment0)
 					
 					local attachment1 = Instance.new("Attachment")
 					attachment1.Parent = part2
+					table.insert(attachments, attachment1)
 					
 					local beam = Instance.new("Beam")
 					beam.Parent = skeletonFolder
@@ -751,7 +870,14 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 					beam.FaceCamera = true
 					beam.Width0 = 0.1
 					beam.Width1 = 0.1
+					beam.Brightness = 1
+					beam.LightEmission = 0
+					beam.LightInfluence = 0
+					beam.Segments = 1
+					beam.Transparency = NumberSequence.new(0)
+					beam.ZOffset = 0
 					beam.Enabled = SkeletonESPEnabled
+					table.insert(beams, beam)
 					
 					return beam
 				end
@@ -759,18 +885,20 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 				for _, pair in ipairs(limbPairs) do
 					local part1 = character:FindFirstChild(pair[1])
 					local part2 = character:FindFirstChild(pair[2])
-					createLine(part1, part2)
+					if part1 and part2 then
+						createLine(part1, part2)
+					end
 				end
 				
-				skeletonESPs[character] = skeletonFolder
+				skeletonESPs[character] = {folder = skeletonFolder, beams = beams, attachments = attachments}
 			end
 			
 			local function setSkeletonESPEnabled(state)
 				SkeletonESPEnabled = state
-				for _, folder in pairs(skeletonESPs) do
-					if folder then
-						for _, beam in pairs(folder:GetChildren()) do
-							if beam:IsA("Beam") then
+				for _, data in pairs(skeletonESPs) do
+					if data and data.beams then
+						for _, beam in pairs(data.beams) do
+							if beam and beam:IsA("Beam") then
 								beam.Enabled = state
 							end
 						end
