@@ -27,7 +27,7 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 	local MainTab = Window:CreateTab("Main", "home")
 		MainTab:CreateSection("Change log")
-			MainTab:CreateParagraph({Title = "NOVEMBER 6", Content = "Added map manipulation buttons · Added D-Zero's animations · Added Adam Dice's animations · Added sus animation"})
+			MainTab:CreateParagraph({Title = "NOVEMBER 24", Content = "Added Box ESP · Added Skeleton ESP · Reorganized ESP UI"})
 
 		MainTab:CreateSection("Hide & Seek")
 			local HunterModeEnabled = false
@@ -616,10 +616,20 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 				end,
 			})
 
-		GuiTab:CreateSection("ESP UI")
+		GuiTab:CreateSection("ESP")
 			local ESPFolder = workspace:WaitForChild("Characters")
-			local ESPEnabled = false
+			
+			-- ESP State Variables
+			local HighlightESPEnabled = false
+			local BoxESPEnabled = false
+			local SkeletonESPEnabled = false
+			
+			-- ESP Storage
 			local highlights = {}
+			local boxESPs = {}
+			local skeletonESPs = {}
+			
+			-- Highlight ESP Functions
 			local function createHighlight(character)
 				if not character or highlights[character] then return end
 				local highlight = Instance.new("Highlight")
@@ -634,36 +644,184 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 					highlight.FillTransparency = 0.25
 					highlight.OutlineTransparency = 0
 				end
-					highlight.Enabled = ESPEnabled
-					highlights[character] = highlight
+				highlight.Enabled = HighlightESPEnabled
+				highlights[character] = highlight
 			end
 
-			local function setESPEnabled(state)
-				ESPEnabled = state
+			local function setHighlightESPEnabled(state)
+				HighlightESPEnabled = state
 				for _, highlight in pairs(highlights) do
 					if highlight then
 						highlight.Enabled = state
 					end
 				end
 			end
-
-			local ESPToggle = GuiTab:CreateToggle({
-				Name = "ESP",
-				CurrentValue = false,
-				Flag = "ESPToggle",
-				Callback = function(value)
-					ESPEnabled = value
-					setESPEnabled(value)
+			
+			-- Box ESP Functions
+			local function createBoxESP(character)
+				if not character or boxESPs[character] then return end
+				
+				local hrp = character:FindFirstChild("HumanoidRootPart")
+				if not hrp then return end
+				
+				local billboardGui = Instance.new("BillboardGui")
+				billboardGui.Name = "BoxESP"
+				billboardGui.Parent = hrp
+				billboardGui.Size = UDim2.new(4, 0, 5, 0)
+				billboardGui.StudsOffset = Vector3.new(0, 1, 0)
+				billboardGui.AlwaysOnTop = true
+				billboardGui.Enabled = BoxESPEnabled
+				
+				local frame = Instance.new("Frame")
+				frame.Parent = billboardGui
+				frame.Size = UDim2.new(1, 0, 1, 0)
+				frame.BackgroundTransparency = 1
+				
+				local color = game.Players:GetPlayerFromCharacter(character) and Color3.fromRGB(80, 109, 84) or Color3.fromRGB(255, 0, 0)
+				
+				local function createLine(name, size, position)
+					local line = Instance.new("Frame")
+					line.Name = name
+					line.Parent = frame
+					line.Size = size
+					line.Position = position
+					line.BackgroundColor3 = color
+					line.BorderSizePixel = 0
+					return line
 				end
-			})
-
-			ESPFolder.ChildAdded:Connect(function(character)
+				
+				createLine("Top", UDim2.new(1, 0, 0, 2), UDim2.new(0, 0, 0, 0))
+				createLine("Bottom", UDim2.new(1, 0, 0, 2), UDim2.new(0, 0, 1, -2))
+				createLine("Left", UDim2.new(0, 2, 1, 0), UDim2.new(0, 0, 0, 0))
+				createLine("Right", UDim2.new(0, 2, 1, 0), UDim2.new(1, -2, 0, 0))
+				
+				boxESPs[character] = billboardGui
+			end
+			
+			local function setBoxESPEnabled(state)
+				BoxESPEnabled = state
+				for _, box in pairs(boxESPs) do
+					if box then
+						box.Enabled = state
+					end
+				end
+			end
+			
+			-- Skeleton ESP Functions
+			local function createSkeletonESP(character)
+				if not character or skeletonESPs[character] then return end
+				
+				local skeletonFolder = Instance.new("Folder")
+				skeletonFolder.Name = "SkeletonESP"
+				skeletonFolder.Parent = character
+				
+				local color = game.Players:GetPlayerFromCharacter(character) and Color3.fromRGB(80, 109, 84) or Color3.fromRGB(255, 0, 0)
+				
+				local limbPairs = {
+					{"Head", "UpperTorso"},
+					{"UpperTorso", "LowerTorso"},
+					{"UpperTorso", "LeftUpperArm"},
+					{"LeftUpperArm", "LeftLowerArm"},
+					{"LeftLowerArm", "LeftHand"},
+					{"UpperTorso", "RightUpperArm"},
+					{"RightUpperArm", "RightLowerArm"},
+					{"RightLowerArm", "RightHand"},
+					{"LowerTorso", "LeftUpperLeg"},
+					{"LeftUpperLeg", "LeftLowerLeg"},
+					{"LeftLowerLeg", "LeftFoot"},
+					{"LowerTorso", "RightUpperLeg"},
+					{"RightUpperLeg", "RightLowerLeg"},
+					{"RightLowerLeg", "RightFoot"}
+				}
+				
+				local function createLine(part1, part2)
+					if not part1 or not part2 then return end
+					
+					local attachment0 = Instance.new("Attachment")
+					attachment0.Parent = part1
+					
+					local attachment1 = Instance.new("Attachment")
+					attachment1.Parent = part2
+					
+					local beam = Instance.new("Beam")
+					beam.Parent = skeletonFolder
+					beam.Attachment0 = attachment0
+					beam.Attachment1 = attachment1
+					beam.Color = ColorSequence.new(color)
+					beam.FaceCamera = true
+					beam.Width0 = 0.1
+					beam.Width1 = 0.1
+					beam.Enabled = SkeletonESPEnabled
+					
+					return beam
+				end
+				
+				for _, pair in ipairs(limbPairs) do
+					local part1 = character:FindFirstChild(pair[1])
+					local part2 = character:FindFirstChild(pair[2])
+					createLine(part1, part2)
+				end
+				
+				skeletonESPs[character] = skeletonFolder
+			end
+			
+			local function setSkeletonESPEnabled(state)
+				SkeletonESPEnabled = state
+				for _, folder in pairs(skeletonESPs) do
+					if folder then
+						for _, beam in pairs(folder:GetChildren()) do
+							if beam:IsA("Beam") then
+								beam.Enabled = state
+							end
+						end
+					end
+				end
+			end
+			
+			-- Initialize ESP for all existing characters
+			local function initializeESPForCharacter(character)
 				task.wait(0.1)
 				createHighlight(character)
+				createBoxESP(character)
+				createSkeletonESP(character)
+			end
+			
+			-- ESP Toggles
+			local HighlightESPToggle = GuiTab:CreateToggle({
+				Name = "Highlight ESP",
+				CurrentValue = false,
+				Flag = "HighlightESPToggle",
+				Callback = function(value)
+					setHighlightESPEnabled(value)
+				end
+			})
+			
+			local BoxESPToggle = GuiTab:CreateToggle({
+				Name = "Box ESP",
+				CurrentValue = false,
+				Flag = "BoxESPToggle",
+				Callback = function(value)
+					setBoxESPEnabled(value)
+				end
+			})
+			
+			local SkeletonESPToggle = GuiTab:CreateToggle({
+				Name = "Skeleton ESP",
+				CurrentValue = false,
+				Flag = "SkeletonESPToggle",
+				Callback = function(value)
+					setSkeletonESPEnabled(value)
+				end
+			})
+			
+			-- Connect to new characters
+			ESPFolder.ChildAdded:Connect(function(character)
+				initializeESPForCharacter(character)
 			end)
-
+			
+			-- Initialize for existing characters
 			for _, character in pairs(ESPFolder:GetChildren()) do
-				createHighlight(character)
+				initializeESPForCharacter(character)
 			end
 
 		GuiTab:CreateSection("Death UI")
